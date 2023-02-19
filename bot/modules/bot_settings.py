@@ -9,9 +9,8 @@ from os import environ
 from dotenv import load_dotenv
 from time import time
 from io import BytesIO
-from apscheduler.triggers.interval import IntervalTrigger
 
-from bot import config_dict, user_data, DATABASE_URL, MAX_SPLIT_SIZE, DRIVES_IDS, DRIVES_NAMES, INDEX_URLS, aria2, GLOBAL_EXTENSION_FILTER, status_reply_dict_lock, Interval, aria2_options, aria2c_global, IS_PREMIUM_USER, download_dict, qbit_options, get_client, LOGGER, bot, scheduler
+from bot import config_dict, user_data, DATABASE_URL, MAX_SPLIT_SIZE, DRIVES_IDS, DRIVES_NAMES, INDEX_URLS, aria2, GLOBAL_EXTENSION_FILTER, status_reply_dict_lock, Interval, aria2_options, aria2c_global, IS_PREMIUM_USER, download_dict, qbit_options, get_client, LOGGER, bot
 from bot.helper.telegram_helper.message_utils import sendMessage, sendFile, editMessage, update_all_messages
 from bot.helper.telegram_helper.filters import CustomFilters
 from bot.helper.telegram_helper.bot_commands import BotCommands
@@ -20,6 +19,7 @@ from bot.helper.ext_utils.bot_utils import setInterval, sync_to_async, async_to_
 from bot.helper.ext_utils.db_handler import DbManger
 from bot.helper.ext_utils.queued_starter import start_from_queued
 from bot.modules.search import initiate_search_tools
+from bot.modules.rss import addJob
 
 START = 0
 STATE = 'view'
@@ -292,7 +292,6 @@ async def load_config():
                         'QUEUE_ALL': QUEUE_ALL,
                         'QUEUE_DOWNLOAD': QUEUE_DOWNLOAD,
                         'QUEUE_UPLOAD': QUEUE_UPLOAD,
-                        'RSS_USER_SESSION_STRING': RSS_USER_SESSION_STRING,
                         'RSS_CHAT_ID': RSS_CHAT_ID,
                         'RSS_DELAY': RSS_DELAY,
                         'SEARCH_API_LINK': SEARCH_API_LINK,
@@ -377,9 +376,8 @@ async def get_buttons(key=None, edit_type=None):
         if key not in ['TELEGRAM_HASH', 'TELEGRAM_API', 'OWNER_ID', 'BOT_TOKEN']:
             buttons.ibutton('Default', f"botset resetvar {key}")
         buttons.ibutton('Close', "botset close")
-        if key in ['SUDO_USERS', 'RSS_USER_SESSION_STRING', 'CMD_SUFFIX', 'OWNER_ID', 'USER_SESSION_STRING',
-                   'TELEGRAM_HASH', 'TELEGRAM_API', 'AUTHORIZED_CHATS', 'RSS_DELAY', 'DATABASE_URL',
-                   'BOT_TOKEN', 'DOWNLOAD_DIR']:
+        if key in ['SUDO_USERS', 'CMD_SUFFIX', 'OWNER_ID', 'USER_SESSION_STRING', 'TELEGRAM_HASH', 
+                   'TELEGRAM_API', 'AUTHORIZED_CHATS', 'DATABASE_URL', 'BOT_TOKEN', 'DOWNLOAD_DIR']:
             msg += 'Restart required for this edit to take effect!\n\n'
         msg += f'Send a valid value for {key}. Timeout: 60 sec'
     elif edit_type == 'editaria':
@@ -415,7 +413,7 @@ async def edit_variable(client, message, pre_message, key):
             await DbManger().trunc_table('tasks')
     elif key == 'RSS_DELAY':
         value = int(value)
-        scheduler.modify_job('0', trigger=IntervalTrigger(seconds=value))
+        addJob(value)
     elif key == 'DOWNLOAD_DIR':
         if not value.endswith('/'):
             value = f'{value}/'
@@ -539,7 +537,7 @@ async def update_private_file(client, message, pre_message):
         if file_name == 'accounts.zip':
             if await aiopath.exists('accounts'):
                 await (await create_subprocess_exec("rm", "-rf", "accounts")).wait()
-            await (await create_subprocess_exec("unzip", "-q", "-o", "accounts.zip", "-w", "**.json", "-d", "accounts/")).wait()
+            await (await create_subprocess_exec("7z", "x", "-o.", "-aoa", "accounts.zip", "accounts/*.json")).wait()
             await (await create_subprocess_exec("chmod", "-R", "777", "accounts")).wait()
         elif file_name == 'list_drives.txt':
             DRIVES_IDS.clear()
@@ -785,13 +783,13 @@ async def edit_bot_settings(client, query):
         await query.answer()
         filename = data[2].rsplit('.zip', 1)[0]
         if await aiopath.exists(filename):
-            await create_subprocess_shell(f"git add -f {filename} \
+            await (await create_subprocess_shell(f"git add -f {filename} \
                                             && git commit -sm botsettings -q \
-                                            && git push origin {config_dict['UPSTREAM_BRANCH']} -q")
+                                            && git push origin {config_dict['UPSTREAM_BRANCH']} -q")).wait()
         else:
-            await create_subprocess_shell(f"git rm -r --cached {filename} \
+            await (await create_subprocess_shell(f"git rm -r --cached {filename} \
                                             && git commit -sm botsettings -q \
-                                            && git push origin {config_dict['UPSTREAM_BRANCH']} -q")
+                                            && git push origin {config_dict['UPSTREAM_BRANCH']} -q")).wait()
         await message.reply_to_mssage.delete()
         await message.delete()
 
